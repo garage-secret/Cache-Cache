@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1d2430">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Garage Secret</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{--asphalt:#1d2430;--line:#f2c230;--alert:#e5383b;--paper:#f4f4f0}
+html,body{height:100%;margin:0;font-family:system-ui,-apple-system,sans-serif;color:var(--paper)}
+#map{position:absolute;inset:0}
+.panel{position:absolute;left:0;right:0;z-index:1000;background:var(--asphalt);padding:14px 18px}
+.screen{position:fixed;inset:0;z-index:2000;background:var(--asphalt);overflow:auto;box-sizing:border-box;padding:calc(22px + env(safe-area-inset-top)) 20px calc(26px + env(safe-area-inset-bottom))}
+#s3{position:absolute;inset:auto 0 0 0;z-index:1500;border-radius:18px 18px 0 0;padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+#hud{top:0;text-align:center;border-radius:0 0 18px 18px;padding-top:calc(12px + env(safe-area-inset-top));transition:background .3s}
+#hud.flash{background:var(--alert)}
+#tp{bottom:0;z-index:1500;border-radius:18px 18px 0 0;padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+h1{font-size:26px;margin:0 0 4px}
+p{margin:4px 0 10px;font-size:14px;opacity:.85}
+label{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:12px 0;font-size:16px}
+input{box-sizing:border-box;width:100%;padding:10px;font-size:16px;border-radius:8px;border:0;margin:4px 0}
+.num{width:84px;text-align:right;flex:none}
+.team{background:#2a3342;border-radius:12px;padding:10px;margin:10px 0}
+.team input:first-child{font-weight:700}
+button{font-size:16px;font-weight:600;border:0;border-radius:10px;padding:12px 14px;background:var(--line);color:var(--asphalt)}
+button.alt{background:#3a4456;color:var(--paper)}
+.row{display:flex;gap:10px;margin-top:14px}.row button{flex:1}
+#loc,#tb,#snd{padding:5px 12px;font-size:14px}
+#tot{font-size:14px;opacity:.85}
+#ph{font-size:15px}
+#tm{font-size:44px;font-weight:700;color:var(--line);font-variant-numeric:tabular-nums;line-height:1.1}
+#hud.flash #tm{color:var(--paper)}
+#ds{font-size:13px;opacity:.85;margin-bottom:6px}
+#al{margin:8px 0;background:var(--alert);border-radius:8px;padding:6px;font-weight:700}
+select{font-size:16px;padding:10px;border-radius:8px;border:0;max-width:55%}
+.team button{margin:6px 6px 0 0;padding:9px 12px}
+#role{font-size:13px;margin-bottom:6px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="hud" class="panel" hidden>
+  <div id="ph"></div><div id="tm"></div><div id="ds"></div><div id="role"></div>
+  <div id="al" hidden>Hors zone ! Reviens vers le centre</div>
+  <button id="tb">Équipes</button> <button id="snd" class="alt">Activer le son</button>
+</div>
+<div id="tp" class="panel" hidden></div>
+
+<div id="s1" class="screen">
+  <h1>Garage Secret</h1>
+  <p>Étape 1 sur 3 : qui joue ?</p>
+  <label>Nombre d'équipes<input class="num" id="nt" type="number" inputmode="numeric" value="2"></label>
+  <label>Joueurs par équipe<input class="num" id="np" type="number" inputmode="numeric" value="2"></label>
+  <div id="tot"></div>
+  <div id="names"></div>
+  <div class="row"><button id="n1">Suivant : la zone</button></div>
+</div>
+
+<div id="s2" class="screen" hidden>
+  <h1>La zone de jeu</h1>
+  <p>Étape 2 sur 3 : comment la zone rétrécit</p>
+  <label>Nombre de zones<input class="num" id="n" type="number" inputmode="numeric" value="4"></label>
+  <div id="zr"></div>
+  <label>Temps entre deux zones (min)<input class="num" id="d" type="number" inputmode="numeric" value="10"></label>
+  <label>Début de la chasse dans (min)<input class="num" id="s" type="number" inputmode="numeric" value="5"></label>
+  <label>Équipe qui se cache<select id="ht"></select></label>
+  <p>Base en ligne (Firebase) pour que l'équipe cachée voie les chercheurs. Laisse vide pour jouer sans.</p>
+  <input id="db" placeholder="https://...firebasedatabase.app">
+  <div class="row"><button class="alt" id="b2">Retour</button><button id="n2">Suivant : le centre</button></div>
+</div>
+
+<div id="s3" class="panel" hidden>
+  <h1>Le centre</h1>
+  <p>Étape 3 sur 3 : touche la carte pour placer le centre, ou <button id="loc">utilise ma position</button></p>
+  <div class="row"><button class="alt" id="b3">Retour</button><button id="go">Lancer la partie</button></div>
+</div>
+
+<div id="s4" class="screen" hidden>
+  <h1>Qui es-tu ?</h1>
+  <p>Choisis ton nom pour recevoir ton rôle.</p>
+  <div id="who"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, c => '&#' + c.charCodeAt(0) + ';');
+const num = (id, a, b, d) => { const v = parseFloat($(id).value); return Math.min(b, Math.max(a, isNaN(v) ? d : v)); };
+const show = id => ['s1','s2','s3'].forEach(x => $(x).hidden = x !== id);
+
+const map = L.map('map', {zoomControl:false}).setView([46.6, 2.4], 5);
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
+
+let game = null, center = null, pick = null, pm = null, me = null, pos = null, zone, next, last = null;
+
+// --- Étape 1 : joueurs ---
+const NT = () => num('nt', 2, 6, 2), NP = () => num('np', 1, 6, 2);
+function build(){
+  const nt = NT(), np = NP(), old = {};
+  document.querySelectorAll('#names input').forEach(i => old[i.dataset.k] = i.value);
+  let h = '';
+  for(let t = 0; t < nt; t++){
+    h += `<div class="team"><input data-k="t${t}" placeholder="Nom de l'équipe ${t+1}" value="${esc(old['t'+t]||'')}">`;
+    for(let p = 0; p < np; p++) h += `<input data-k="t${t}p${p}" placeholder="Joueur ${p+1}" value="${esc(old['t'+t+'p'+p]||'')}">`;
+    h += '</div>';
+  }
+  $('names').innerHTML = h;
+  $('tot').textContent = 'Total : ' + nt*np + ' joueurs';
+}
+const val = k => $('names').querySelector(`[data-k="${k}"]`).value.trim();
+const teams = () => Array.from({length:NT()}, (_, t) => ({
+  n: val('t'+t) || 'Équipe ' + (t+1),
+  p: Array.from({length:NP()}, (_, p) => val('t'+t+'p'+p) || 'Joueur ' + (p+1))
+}));
+$('nt').oninput = $('np').oninput = build;
+
+// --- Rayon de chaque zone ---
+const DEF = [3000, 1500, 500, 200];
+function buildZ(){
+  const n = num('n', 1, 10, 4), old = [];
+  document.querySelectorAll('#zr input').forEach(i => old.push(i.value));
+  let h = '';
+  for(let i = 0; i < n; i++)
+    h += `<label>Zone ${i+1} : rayon (m)<input class="num" type="number" inputmode="numeric" value="${old[i] || DEF[i] || 100}"></label>`;
+  $('zr').innerHTML = h;
+}
+$('n').oninput = buildZ;
+$('n1').onclick = () => {
+  const cur = $('ht').value;
+  $('ht').innerHTML = teams().map((t, i) => `<option value="${i}">${esc(t.n)}</option>`).join('');
+  if(cur) $('ht').value = cur;
+  try{ if(!$('db').value) $('db').value = localStorage.getItem('gs_db') || ''; }catch(e){}
+  show('s2');
+};
+$('b2').onclick = () => show('s1');
+$('n2').onclick = () => show('s3');
+$('b3').onclick = () => show('s2');
+
+// --- Étape 3 : centre ---
+function setPick(ll){ pick = ll; pm ? pm.setLatLng(ll) : (pm = L.marker(ll).addTo(map)); }
+map.on('click', e => { if(!game) setPick(e.latlng); });
+$('loc').onclick = () => navigator.geolocation.getCurrentPosition(
+  p => { const ll = L.latLng(p.coords.latitude, p.coords.longitude); setPick(ll); map.setView(ll, 13); },
+  () => alert('Position refusée : autorise la localisation dans ton navigateur.'),
+  {enableHighAccuracy:true});
+
+$('go').onclick = () => {
+  if(!pick) return alert('Place d\'abord le centre de la zone sur la carte.');
+  const r = Array.from(document.querySelectorAll('#zr input'), i => Math.max(50, parseFloat(i.value) || 50));
+  const g = {lat:+pick.lat.toFixed(5), lng:+pick.lng.toFixed(5), r, n:r.length, d:num('d',1,120,10), s:Date.now() + num('s',0,240,5)*60000, t:teams()};
+  g.db = $('db').value.trim(); g.h = +$('ht').value || 0; g.g = Math.random().toString(36).slice(2, 8);
+  if(g.db && !/^https:\/\//.test(g.db)) return alert("L'adresse de la base doit commencer par https://");
+  try{ localStorage.setItem('gs_db', g.db); }catch(e){}
+  const o = {c:g.lat+','+g.lng, r:g.r.join(','), n:g.n, d:g.d, s:g.s, t:JSON.stringify(g.t), g:g.g, h:g.h};
+  if(g.db) o.db = g.db;
+  const q = new URLSearchParams(o).toString();
+  const url = location.href.split('#')[0] + '#' + q;
+  if(navigator.share) navigator.share({title:'Garage Secret', text:'Rejoins la partie !', url}).catch(() => {});
+  else if(navigator.clipboard) navigator.clipboard.writeText(url).then(() => alert('Lien copié ! Envoie-le à tes potes.'));
+  location.hash = q;
+  start(g);
+};
+
+// --- Partie en cours ---
+const rad = (g, i) => g.r[Math.min(g.r.length - 1, Math.max(i, 0))];
+const mmss = ms => { const s = Math.max(0, Math.ceil(ms/1000)); return String(s/60|0).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); };
+
+function start(g){
+  game = g; center = L.latLng(g.lat, g.lng);
+  show(''); $('hud').hidden = false; $('tb').hidden = !g.t.length;
+  $('tp').innerHTML = g.t.map(t => `<p><b>${esc(t.n)}</b> : ${esc(t.p.join(', '))}</p>`).join('') + '<button class="alt">Fermer</button>';
+  $('tb').onclick = () => $('tp').hidden = false;
+  $('tp').onclick = () => $('tp').hidden = true;
+  if(pm) map.removeLayer(pm);
+  zone = L.circle(center, {radius:g.r[0], color:'#e5383b', weight:3, fillOpacity:.08}).addTo(map);
+  next = L.circle(center, {radius:g.r[0], color:'#e5383b', weight:2, dashArray:'8', fill:false}).addTo(map);
+  map.fitBounds(zone.getBounds());
+  navigator.geolocation.watchPosition(p => {
+    pos = L.latLng(p.coords.latitude, p.coords.longitude);
+    me ? me.setLatLng(pos) : (me = L.circleMarker(pos, {radius:9, color:'#fff', weight:3, fillColor:'#0a6cff', fillOpacity:1}).addTo(map));
+  }, () => {}, {enableHighAccuracy:true});
+  if(navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => {});
+  $('snd').hidden = !!(ac && ac.state === 'running');
+  tick(); setInterval(tick, 1000); setInterval(sound, 200);
+  pickWho();
+}
+
+function tick(){
+  const g = game, now = Date.now(), t = now - g.s;
+  const i = t < 0 ? -1 : Math.min(g.n - 1, Math.floor(t / (g.d*6e4)));
+  const R = rad(g, i), more = i < g.n - 1;
+  zone.setRadius(R);
+  next.setRadius(rad(g, i + 1));
+  next.setStyle({opacity: more && i >= 0 ? 1 : 0});
+  $('ph').textContent = i < 0 ? 'Phase de cachette' : 'Zone ' + (i+1) + '/' + g.n + ' · rayon ' + Math.round(R) + ' m';
+  $('tm').textContent = i < 0 ? mmss(-t) : more ? mmss(g.s + (i+1)*g.d*6e4 - now) : 'Dernière zone';
+  const dist = pos ? ' · à ' + Math.round(center.distanceTo(pos)) + ' m du centre' : '';
+  $('ds').textContent = (i < 0 ? 'avant le début de la chasse' : more ? 'avant la prochaine zone' : 'plus de rétrécissement') + dist;
+  const out = pos && center.distanceTo(pos) > R;
+  $('al').hidden = !out;
+  if(out && navigator.vibrate) navigator.vibrate(300);
+  if(last !== null && i > last && i > 0){
+    $('hud').classList.add('flash'); setTimeout(() => $('hud').classList.remove('flash'), 4000);
+    if(navigator.vibrate) navigator.vibrate([200,100,200]);
+  }
+  last = i;
+}
+
+// --- Rôles et positions partagées ---
+let role = null, myKey = '', myName = '', sk = {};
+const lsGet = k => { try{ return localStorage.getItem(k); }catch(e){ return null; } };
+const lsSet = (k, v) => { try{ localStorage.setItem(k, v); }catch(e){} };
+function pickWho(){
+  if(!game.db || !game.g || !game.t.length) return;
+  let sv = null; try{ sv = JSON.parse(lsGet('gs_who_' + game.g)); }catch(e){}
+  if(sv) return applyWho(sv);
+  $('who').innerHTML = game.t.map((t, ti) => `<div class="team"><b>${esc(t.n)}</b> ${ti === game.h ? '(se cache)' : '(cherche)'}<br>` +
+    t.p.map((n, pi) => `<button class="alt" data-w="${ti}-${pi}">${esc(n)}</button>`).join('') + '</div>').join('');
+  $('s4').hidden = false;
+}
+$('who').onclick = e => {
+  const b = e.target.closest('button'); if(!b) return;
+  const [t, p] = b.dataset.w.split('-').map(Number);
+  lsSet('gs_who_' + game.g, JSON.stringify({t, p}));
+  $('s4').hidden = true; applyWho({t, p});
+};
+function applyWho(w){
+  const hider = w.t === game.h;
+  role = hider ? 'hider' : 'seeker';
+  myKey = 't' + w.t + 'p' + w.p; myName = game.t[w.t].p[w.p];
+  $('role').textContent = hider ? 'Tu te caches : tu vois les chercheurs' : "Tu cherches : l'équipe cachée voit ta position";
+  setInterval(hider ? pull : push, 4000);
+}
+const dbu = path => game.db.replace(/\/$/, '') + '/games/' + game.g + path + '.json';
+function push(){
+  if(role !== 'seeker' || !pos || Date.now() < game.s) return;
+  fetch(dbu('/pos/' + myKey), {method:'PUT', body:JSON.stringify({lat:pos.lat, lng:pos.lng, t:Date.now(), n:myName})}).catch(() => {});
+}
+function pull(){
+  if(role !== 'hider' || Date.now() < game.s) return;
+  fetch(dbu('/pos')).then(r => r.json()).then(d => draw(d || {})).catch(() => {});
+}
+function draw(d){
+  Object.keys(sk).forEach(k => { if(!d[k]){ map.removeLayer(sk[k]); delete sk[k]; } });
+  Object.entries(d).forEach(([k, v]) => {
+    if(!v || typeof v.lat !== 'number') return;
+    const ll = [v.lat, v.lng];
+    if(!sk[k]) sk[k] = L.circleMarker(ll, {radius:9, color:'#fff', weight:3, fillColor:'#f2c230', fillOpacity:1}).addTo(map).bindTooltip(esc(String(v.n || '')), {permanent:true, direction:'top'});
+    sk[k].setLatLng(ll).setStyle({fillOpacity: Date.now() - v.t > 60000 ? .3 : 1});
+  });
+}
+
+// --- Sons de suspense ---
+let ac = null, lastR = null;
+function unlock(){
+  try{ ac = ac || new (window.AudioContext || window.webkitAudioContext)(); ac.resume(); }catch(e){}
+  $('snd').hidden = true;
+}
+['click','touchend'].forEach(ev => document.addEventListener(ev, unlock, {once:true}));
+function beep(f, dur, vol, type){
+  if(!ac || ac.state !== 'running') return;
+  const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.value = f;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+  o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + dur);
+}
+const boom = () => beep(150, .8, .7, 'sawtooth');
+function remain(){
+  const g = game, t = Date.now() - g.s;
+  if(t < 0) return -t;
+  const i = Math.min(g.n - 1, Math.floor(t / (g.d*6e4)));
+  return i < g.n - 1 ? g.s + (i+1)*g.d*6e4 - Date.now() : null;
+}
+function sound(){
+  const ms = remain();
+  if(ms === null){ if(lastR === 1) boom(); lastR = null; return; }
+  const r = Math.ceil(ms / 1000);
+  if(r === lastR) return;
+  const was = lastR; lastR = r;
+  if(was === 1 && r > 1) boom();
+  else if(r === 60 || r === 30){ beep(880, .12, .35, 'sine'); setTimeout(() => beep(880, .12, .35, 'sine'), 180); }
+  else if(r >= 1 && r <= 10) beep(r % 2 ? 1100 : 750, .06, r <= 3 ? .6 : .35, 'square');
+}
+
+// --- Démarrage ---
+build(); buildZ();
+const p = new URLSearchParams(location.hash.slice(1));
+if(p.get('c')){
+  const [lat, lng] = p.get('c').split(',').map(Number);
+  let t = []; try{ t = JSON.parse(p.get('t') || '[]'); }catch(e){}
+  let r = p.get('r').split(',').map(Number); const n = +p.get('n');
+  if(r.length === 1) r = Array.from({length:n}, (_, k) => r[0] * (1 - k / n));
+  start({lat, lng, r, n:r.length, d:+p.get('d'), s:+p.get('s'), t, g:p.get('g') || '', h:+p.get('h') || 0, db:p.get('db') || ''});
+}
+</script>
+</body>
+</html>
