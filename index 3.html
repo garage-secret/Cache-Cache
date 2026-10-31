@@ -43,10 +43,19 @@ select{font-size:16px;padding:10px;border-radius:8px;border:0;max-width:55%}
 .rb.s{background:var(--line);color:var(--asphalt)}
 .rs{font-size:12px;margin-top:3px;opacity:.85}
 #car{transition:transform .4s}
+#end{z-index:2500;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#fff}
+#end.alarm{animation:alarm .6s steps(1) infinite}
+#end.win{background:#12351f}
+#et{font-size:34px;margin:0 0 10px}
+@keyframes alarm{0%{background:#c4001d}50%{background:#0a3cff}}
+#end .row,#nx{width:100%;max-width:340px}
+#pw button{font-size:14px;padding:10px 6px}
+.ping{width:30px;height:30px;border-radius:50%;background:rgba(229,56,59,.35);border:3px solid #e5383b;animation:pg 1.2s infinite}
+@keyframes pg{0%{transform:scale(.6);opacity:1}100%{transform:scale(1.4);opacity:.3}}
 .mode{display:block;width:100%;text-align:left;margin:12px 0;padding:16px;background:#2a3342;color:var(--paper);border:2px solid var(--line)}
 .mode small{font-weight:400;opacity:.85;font-size:14px}
 #jam{position:absolute;inset:0;z-index:900;background:rgba(29,36,48,.94);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:28px;font-weight:700;text-align:center}
-#pw{bottom:0;z-index:1100;border-radius:18px 18px 0 0;padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+#pw,#fp{bottom:0;z-index:1100;border-radius:18px 18px 0 0;padding-bottom:calc(14px + env(safe-area-inset-bottom))}
 #pws{font-size:14px;opacity:.85}
 button:disabled{opacity:.4}
 #intro{position:fixed;inset:0;z-index:3000;background:var(--asphalt);display:flex;flex-direction:column;align-items:center;justify-content:center;animation:iout .6s 4s forwards}
@@ -61,6 +70,8 @@ button:disabled{opacity:.4}
 @keyframes lift{to{transform:scaleY(.04)}}
 @keyframes fade{to{opacity:1}}
 @keyframes iout{to{opacity:0;visibility:hidden}}
+#intro:not(.go),#intro:not(.go) *{animation-play-state:paused!important}
+#tap{margin-top:28px;font-size:16px;letter-spacing:.2em;text-transform:uppercase;color:var(--line)}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -83,6 +94,7 @@ button:disabled{opacity:.4}
   </svg>
   <div class="tt">Garage Secret</div>
   <div class="by">by Les +10</div>
+  <div id="tap">Touche pour entrer</div>
 </div>
 
 <div id="hud" class="panel" hidden>
@@ -100,7 +112,10 @@ button:disabled{opacity:.4}
 </div>
 
 <div id="jam" hidden><div>Signal brouillé</div><div id="jt"></div></div>
-<div id="pw" class="panel" hidden><div id="pws"></div><div class="row"><button id="bj">Brouiller</button><button id="bs">Décaler la zone</button></div></div>
+<div id="fp" class="panel" hidden><button id="bf" style="width:100%;font-size:20px;padding:16px">Je t'ai trouvé !</button></div>
+<div id="end" class="screen" hidden><h1 id="et"></h1><p id="ed"></p><div id="nx"><div class="row"><button id="bn1">Manche suivante : mêmes rôles</button></div><div class="row"><button id="bn2">Manche suivante : rôles inversés</button></div><div class="row"><button class="alt" id="bst">Terminer la partie</button></div></div>
+<div class="row"><button id="en" hidden>Nouvelle partie</button></div></div>
+<div id="pw" class="panel" hidden><div id="pws"></div><div class="row"><button id="bj">Brouiller</button><button id="bs">Décaler la zone</button><button id="bd">Leurre</button></div></div>
 
 <div id="s1" class="screen" hidden>
   <h1>Garage Secret</h1>
@@ -126,6 +141,7 @@ button:disabled{opacity:.4}
     <label>Durée du décalage de zone (min)<input class="num" id="ps" type="number" inputmode="numeric" value="3"></label>
     <label>Distance du décalage (m)<input class="num" id="pm" type="number" inputmode="numeric" value="300"></label>
     <label>Recharge entre deux pouvoirs (min)<input class="num" id="pc" type="number" inputmode="numeric" value="3"></label>
+    <label>Durée du leurre (s)<input class="num" id="pd" type="number" inputmode="numeric" value="60"></label>
   </div>
   <p>Base en ligne (Firebase) pour que l'équipe cachée voie les chercheurs. Laisse vide pour jouer sans.</p>
   <input id="db" placeholder="https://...firebasedatabase.app">
@@ -214,10 +230,10 @@ $('go').onclick = () => {
   const r = Array.from(document.querySelectorAll('#zr input'), i => Math.max(50, parseFloat(i.value) || 50));
   const g = {lat:+pick.lat.toFixed(5), lng:+pick.lng.toFixed(5), r, n:r.length, d:num('d',1,120,10), s:Date.now() + num('s',0,240,5)*60000, t:teams()};
   g.db = $('db').value.trim(); g.h = +$('ht').value || 0; g.g = Math.random().toString(36).slice(2, 8);
-  g.m = mode; g.pw = [num('pj',5,300,30), num('ps',1,30,3), num('pm',50,3000,300), num('pc',.5,30,3)];
+  g.m = mode; g.w = num('s',0,240,5); g.pw = [num('pj',5,300,30), num('ps',1,30,3), num('pm',50,3000,300), num('pc',.5,30,3), num('pd',10,300,60)];
   if(g.db && !/^https:\/\//.test(g.db)) return alert("L'adresse de la base doit commencer par https://");
   try{ localStorage.setItem('gs_db', g.db); }catch(e){}
-  const o = {c:g.lat+','+g.lng, r:g.r.join(','), n:g.n, d:g.d, s:g.s, t:JSON.stringify(g.t), g:g.g, h:g.h, m:g.m, pw:g.pw.join(',')};
+  const o = {c:g.lat+','+g.lng, r:g.r.join(','), n:g.n, d:g.d, s:g.s, t:JSON.stringify(g.t), g:g.g, h:g.h, m:g.m, pw:g.pw.join(','), w:g.w};
   if(g.db) o.db = g.db;
   const q = new URLSearchParams(o).toString();
   const url = location.href.split('#')[0] + '#' + q;
@@ -255,6 +271,7 @@ function start(g){
 }
 
 function tick(){
+  if(over) return;
   const g = game, now = Date.now(), t = now - g.s;
   const i = t < 0 ? -1 : Math.min(g.n - 1, Math.floor(t / (g.d*6e4)));
   const R = rad(g, i), more = i < g.n - 1;
@@ -276,12 +293,13 @@ function tick(){
   }
   last = i;
   if(now < shift.until) $('ph').textContent += ' · zone décalée';
+  if(round > 1) $('ph').textContent = 'Manche ' + round + ' · ' + $('ph').textContent;
   $('jam').hidden = !(role === 'seeker' && now < jamUntil);
   if(!$('jam').hidden) $('jt').textContent = mmss(jamUntil - now);
   if(role === 'hider' && game.m === 'po'){
     const cd = lastPow + game.pw[3]*6e4 - now;
     $('pws').textContent = cd > 0 ? 'Recharge : ' + mmss(cd) : 'Pouvoirs prêts';
-    $('bj').disabled = $('bs').disabled = cd > 0;
+    $('bj').disabled = $('bs').disabled = $('bd').disabled = cd > 0;
   }
 }
 
@@ -303,6 +321,10 @@ function relay(){
 function onPower(m){
   if(m.id && m.id === pend) pend = null;
   if(m.k === 'jam'){ jamUntil = Date.now() + m.d*1000; if(role === 'seeker') flashHud(); }
+  if(m.k === 'found' && m.r === round) endGame(m);
+  if(m.k === 'next') newRound(m);
+  if(m.k === 'stop' && m.r === round) showFinal();
+  if(m.k === 'decoy') showDecoy(m);
   if(m.k === 'shift'){ shift = {lat:m.dlat, lng:m.dlng, until:Date.now() + m.d*1000}; flashHud(); }
 }
 function usePower(k){
@@ -311,6 +333,11 @@ function usePower(k){
   lastPow = now;
   const m = {k, id:Math.random().toString(36).slice(2), t:now};
   if(k === 'jam') m.d = jam;
+  else if(k === 'decoy'){
+    const C = curCenter(), a = Math.random() * 2 * Math.PI, dist = Math.sqrt(Math.random()) * curRadius() * .9;
+    m.d = game.pw[4] || 60;
+    m.lat = C.lat + dist * Math.cos(a) / 111320; m.lng = C.lng + dist * Math.sin(a) / (111320 * Math.cos(C.lat * Math.PI / 180));
+  }
   else {
     const a = Math.random() * 2 * Math.PI;
     m.d = sm * 60; m.dlat = sd * Math.cos(a) / 111320; m.dlng = sd * Math.sin(a) / (111320 * Math.cos(game.lat * Math.PI / 180));
@@ -319,6 +346,73 @@ function usePower(k){
   fetch('https://ntfy.sh/' + topic(), {method:'POST', body:JSON.stringify(m)}).catch(() => {});
   setTimeout(() => { if(pend === m.id){ pend = null; alert("Pouvoir non reçu : le relais est injoignable. Vérifie ta connexion."); } }, 5000);
 }
+let over = false;
+function post(m){
+  pend = m.id;
+  fetch('https://ntfy.sh/' + topic(), {method:'POST', body:JSON.stringify(m)}).catch(() => {});
+  setTimeout(() => { if(pend === m.id){ pend = null; alert("Message non reçu : le relais est injoignable. Vérifie ta connexion."); } }, 5000);
+}
+$('bf').onclick = () => {
+  if(over || !confirm("Tu as trouvé l'équipe cachée ?")) return;
+  post({k:'found', id:Math.random().toString(36).slice(2), t:Date.now(), n:myName, r:round});
+};
+function siren(sec){
+  if(!ac) return;
+  const t0 = ac.currentTime, o = ac.createOscillator(), g = ac.createGain(), lp = ac.createBiquadFilter();
+  o.type = 'square'; lp.type = 'lowpass'; lp.frequency.value = 3000;
+  for(let k = 0; k < sec / .45; k++) o.frequency.setValueAtTime(k % 2 ? 870 : 650, t0 + k * .45);
+  g.gain.setValueAtTime(.0001, t0); g.gain.exponentialRampToValueAtTime(.2, t0 + .1);
+  g.gain.setValueAtTime(.2, t0 + sec - .3); g.gain.exponentialRampToValueAtTime(.0001, t0 + sec);
+  o.connect(lp); lp.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0 + sec + .05); sirenO = o;
+}
+function fanfare(){
+  [523, 659, 784, 1047].forEach((fr, k) => setTimeout(() => beep(fr, .25, .3, 'square'), k * 140));
+  setTimeout(() => [523, 659, 784, 1047].forEach(fr => beep(fr, .9, .12, 'triangle')), 600);
+}
+function endGame(m){
+  if(over) return; over = true;
+  const el = Math.max(0, Date.now() - game.s), hider = role === 'hider';
+  results.push({h:game.h, el});
+  $('pw').hidden = $('fp').hidden = $('jam').hidden = true;
+  $('end').className = 'screen ' + (hider ? 'alarm' : 'win'); $('end').hidden = false;
+  $('nx').hidden = false; $('en').hidden = true;
+  $('et').textContent = hider ? 'Vous avez été trouvés !' : 'Bravo, trouvés !';
+  $('ed').textContent = (hider ? (m.n || 'Un chercheur') + ' vous a trouvés' : 'Bien joué') + ' · durée de la chasse : ' + mmss(el);
+  if(hider){ siren(8); if(navigator.vibrate) navigator.vibrate([500,200,500,200,500]); } else fanfare();
+}
+$('en').onclick = () => { location.hash = ''; location.reload(); };
+let round = 1, results = [], sirenO = null, decoys = [], finished = false;
+const curCenter = () => Date.now() < shift.until ? L.latLng(game.lat + shift.lat, game.lng + shift.lng) : center;
+const curRadius = () => { const t = Date.now() - game.s; return rad(game, t < 0 ? -1 : Math.min(game.n - 1, Math.floor(t / (game.d * 6e4)))); };
+function showDecoy(m){
+  if(role !== 'seeker' || over) return;
+  const mk = L.marker([m.lat, m.lng], {icon:L.divIcon({className:'', html:'<div class="ping"></div>', iconSize:[30,30], iconAnchor:[15,15]})}).addTo(map).bindTooltip('Signal ?', {permanent:true, direction:'top'});
+  decoys.push(mk); setTimeout(() => map.removeLayer(mk), m.d * 1000); flashHud();
+}
+function newRound(m){
+  if(!over || finished || m.r !== round) return;
+  round++;
+  if(m.sw) game.h = (game.h + 1) % game.t.length;
+  game.s = m.t + game.w * 60000;
+  over = false; last = null; lastR = null; shift = {lat:0, lng:0, until:0}; jamUntil = 0; lastPow = 0;
+  try{ if(sirenO) sirenO.stop(); }catch(e){}
+  decoys.forEach(d => map.removeLayer(d)); decoys = [];
+  $('end').hidden = true; setRole();
+}
+function showFinal(){
+  if(!over || finished) return; finished = true;
+  const tot = {}; results.forEach(r => tot[r.h] = (tot[r.h] || 0) + r.el);
+  const best = Object.keys(tot).sort((a, b) => tot[b] - tot[a])[0];
+  $('et').textContent = 'Fin de la partie';
+  $('ed').innerHTML = results.map((r, i) => 'Manche ' + (i+1) + ' : ' + esc(game.t[r.h].n) + ' cachée, trouvée en ' + mmss(r.el)).join('<br>') +
+    '<br><br>Équipe la plus longtemps cachée : <b>' + esc(game.t[best].n) + '</b> (' + mmss(tot[best]) + ')';
+  $('end').className = 'screen win'; $('nx').hidden = true; $('en').hidden = false;
+}
+const rid = () => Math.random().toString(36).slice(2);
+$('bn1').onclick = () => post({k:'next', sw:0, r:round, id:rid(), t:Date.now()});
+$('bn2').onclick = () => post({k:'next', sw:1, r:round, id:rid(), t:Date.now()});
+$('bst').onclick = () => post({k:'stop', r:round, id:rid(), t:Date.now()});
+$('bd').onclick = () => usePower('decoy');
 $('bj').onclick = () => usePower('jam');
 $('bs').onclick = () => usePower('shift');
 
@@ -340,22 +434,30 @@ $('who').onclick = e => {
   lsSet('gs_who_' + game.g, JSON.stringify({t, p}));
   $('s4').hidden = true; applyWho({t, p});
 };
+let me2 = null;
 function applyWho(w){
-  const hider = w.t === game.h;
+  me2 = w; myKey = 't' + w.t + 'p' + w.p; myName = game.t[w.t].p[w.p];
+  setRole();
+  if(game.db) setInterval(() => role === 'hider' ? pull() : push(), 4000);
+  relay();
+}
+function setRole(){
+  const hider = me2.t === game.h;
   role = hider ? 'hider' : 'seeker';
-  myKey = 't' + w.t + 'p' + w.p; myName = game.t[w.t].p[w.p];
   $('role').innerHTML = `<div class="rb ${hider ? 'h' : 's'}">${hider ? 'Tu te caches' : 'Tu cherches'}</div>` +
     (game.db ? `<div class="rs">${hider ? 'Tu vois les chercheurs sur la carte' : "L'équipe cachée voit ta position"}</div>` : '');
-  if(game.db) setInterval(hider ? pull : push, 4000);
-  if(game.m === 'po'){ relay(); if(hider){ $('pw').hidden = false; $('bj').textContent = 'Brouiller ' + game.pw[0] + ' s'; } }
+  $('pw').hidden = !(game.m === 'po' && hider);
+  $('fp').hidden = hider;
+  if(hider) $('bj').textContent = 'Brouiller ' + game.pw[0] + ' s';
+  Object.keys(sk).forEach(k => { map.removeLayer(sk[k]); delete sk[k]; });
 }
 const dbu = path => game.db.replace(/\/$/, '') + '/games/' + game.g + path + '.json';
 function push(){
-  if(role !== 'seeker' || !pos || Date.now() < game.s) return;
+  if(over || role !== 'seeker' || !pos || Date.now() < game.s) return;
   fetch(dbu('/pos/' + myKey), {method:'PUT', body:JSON.stringify({lat:pos.lat, lng:pos.lng, t:Date.now(), n:myName})}).catch(() => {});
 }
 function pull(){
-  if(role !== 'hider' || Date.now() < game.s) return;
+  if(over || role !== 'hider' || Date.now() < game.s) return;
   fetch(dbu('/pos')).then(r => r.json()).then(d => draw(d || {})).catch(() => {});
 }
 function draw(d){
@@ -390,6 +492,7 @@ function remain(){
   return i < g.n - 1 ? g.s + (i+1)*g.d*6e4 - Date.now() : null;
 }
 function sound(){
+  if(over) return;
   const ms = remain();
   if(ms === null){ if(lastR === 1) boom(); lastR = null; return; }
   const r = Math.ceil(ms / 1000);
@@ -401,8 +504,65 @@ function sound(){
 }
 
 // --- Démarrage ---
-$('intro').onclick = () => $('intro').hidden = true;
-setTimeout(() => $('intro').hidden = true, 4700);
+function jingle(){
+  if(!ac) return;
+  const t0 = ac.currentTime, out = ac.destination;
+  const env = (g, st, a, dur, vol) => { g.gain.setValueAtTime(.0001, t0 + st); g.gain.exponentialRampToValueAtTime(vol, t0 + st + a); g.gain.exponentialRampToValueAtTime(.0001, t0 + st + dur); };
+  const tone = (type, f0, f1, st, dur, vol, lp) => {
+    const o = ac.createOscillator(), g = ac.createGain(), fl = ac.createBiquadFilter();
+    o.type = type; o.frequency.setValueAtTime(f0, t0 + st); o.frequency.exponentialRampToValueAtTime(f1, t0 + st + dur);
+    fl.type = 'lowpass'; fl.frequency.value = lp;
+    env(g, st, Math.min(.05, dur/3), dur, vol);
+    o.connect(fl); fl.connect(g); g.connect(out); o.start(t0 + st); o.stop(t0 + st + dur + .05);
+  };
+  const nb = ac.createBuffer(1, ac.sampleRate, ac.sampleRate), nd = nb.getChannelData(0);
+  for(let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const noise = (st, dur, f0, f1, q, vol) => {
+    const sr = ac.createBufferSource(), bp = ac.createBiquadFilter(), g = ac.createGain();
+    sr.buffer = nb; sr.loop = true; bp.type = 'bandpass'; bp.Q.value = q;
+    bp.frequency.setValueAtTime(f0, t0 + st); bp.frequency.exponentialRampToValueAtTime(f1, t0 + st + dur);
+    env(g, st, Math.min(.05, dur/3), dur, vol);
+    sr.connect(bp); bp.connect(g); g.connect(out); sr.start(t0 + st); sr.stop(t0 + st + dur + .05);
+  };
+  // 1. Rideau du garage : souffle métallique, cliquetis qui s'accélèrent, grondement, choc en haut
+  noise(.8, 1.3, 400, 2800, 1.5, .12);
+  for(let k = 0, t = .8; t < 2.0; k++){ noise(t, .02, 2500, 2500, 3, .3); t += Math.max(.035, .1 - k * .004); }
+  tone('triangle', 40, 70, .8, 1.3, .3, 200);
+  tone('sine', 120, 45, 2.0, .45, .6, 300);
+  // 2. Moteur de Ferrari : démarrage, deux coups d'accélérateur qui montent très haut
+  const sh = ac.createWaveShaper(), cv = new Float32Array(256);
+  for(let i = 0; i < 256; i++) cv[i] = Math.tanh((i / 128 - 1) * 6);
+  sh.curve = cv;
+  const lp = ac.createBiquadFilter(), eg = ac.createGain(), lfo = ac.createOscillator(), lg = ac.createGain();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(900, t0 + 2.05); lp.frequency.exponentialRampToValueAtTime(5000, t0 + 2.45);
+  lp.frequency.exponentialRampToValueAtTime(1500, t0 + 2.6); lp.frequency.exponentialRampToValueAtTime(6000, t0 + 3.0);
+  sh.connect(lp); lp.connect(eg); eg.connect(out);
+  [[1, .6], [1.007, .6], [2.01, .3]].forEach(([m, v]) => {
+    const o = ac.createOscillator(), og = ac.createGain(); o.type = 'sawtooth'; og.gain.value = v;
+    o.frequency.setValueAtTime(70 * m, t0 + 2.05);
+    o.frequency.exponentialRampToValueAtTime(420 * m, t0 + 2.45);
+    o.frequency.exponentialRampToValueAtTime(180 * m, t0 + 2.6);
+    o.frequency.exponentialRampToValueAtTime(640 * m, t0 + 3.0);
+    o.frequency.exponentialRampToValueAtTime(260 * m, t0 + 3.3);
+    o.connect(og); og.connect(sh); o.start(t0 + 2.05); o.stop(t0 + 3.35);
+  });
+  lfo.frequency.setValueAtTime(30, t0 + 2.05); lfo.frequency.linearRampToValueAtTime(90, t0 + 3.0);
+  lg.gain.value = .05; lfo.connect(lg); lg.connect(eg.gain); lfo.start(t0 + 2.05); lfo.stop(t0 + 3.35);
+  eg.gain.setValueAtTime(.0001, t0 + 2.05); eg.gain.exponentialRampToValueAtTime(.16, t0 + 2.15);
+  eg.gain.setValueAtTime(.16, t0 + 3.05); eg.gain.exponentialRampToValueAtTime(.0001, t0 + 3.35);
+  // 3. Final : arpège de jeu vidéo puis accord brillant
+  [523, 659, 784, 1047].forEach((fr, k) => tone('square', fr, fr, 3.15 + k * .1, .16, .09, 3000));
+  [523, 659, 784, 1047].forEach(fr => tone('triangle', fr, fr, 3.6, .7, .1, 3000));
+  tone('sine', 2093, 2093, 3.6, .5, .05, 5000);
+}
+$('intro').onclick = () => {
+  const it = $('intro');
+  if(it.classList.contains('go')){ it.hidden = true; return; }
+  it.classList.add('go'); $('tap').hidden = true;
+  unlock(); jingle();
+  setTimeout(() => it.hidden = true, 4700);
+};
 build(); buildZ();
 const p = new URLSearchParams(location.hash.slice(1));
 if(p.get('c')){
@@ -410,7 +570,7 @@ if(p.get('c')){
   let t = []; try{ t = JSON.parse(p.get('t') || '[]'); }catch(e){}
   let r = p.get('r').split(',').map(Number); const n = +p.get('n');
   if(r.length === 1) r = Array.from({length:n}, (_, k) => r[0] * (1 - k / n));
-  start({lat, lng, r, n:r.length, d:+p.get('d'), s:+p.get('s'), t, g:p.get('g') || '', h:+p.get('h') || 0, db:p.get('db') || '', m:p.get('m') || 'cl', pw:(p.get('pw') || '30,3,300,3').split(',').map(Number)});
+  start({lat, lng, r, n:r.length, d:+p.get('d'), s:+p.get('s'), t, g:p.get('g') || '', h:+p.get('h') || 0, db:p.get('db') || '', m:p.get('m') || 'cl', pw:(p.get('pw') || '30,3,300,3,60').split(',').map(Number), w:+p.get('w') || 5});
 }
 </script>
 </body>
