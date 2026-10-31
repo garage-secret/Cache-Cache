@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1d2430">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Cache-cache en voiture</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{--asphalt:#1d2430;--line:#f2c230;--alert:#e5383b;--paper:#f4f4f0}
+html,body{height:100%;margin:0;font-family:system-ui,-apple-system,sans-serif;color:var(--paper)}
+#map{position:absolute;inset:0}
+.panel{position:absolute;left:0;right:0;z-index:1000;background:var(--asphalt);padding:14px 18px}
+#setup{bottom:0;border-radius:18px 18px 0 0;padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+#hud{top:0;text-align:center;border-radius:0 0 18px 18px;padding-top:calc(12px + env(safe-area-inset-top));transition:background .3s}
+#hud.flash{background:var(--alert)}
+h1{font-size:20px;margin:0 0 6px}
+p{margin:4px 0 8px;font-size:14px;opacity:.85}
+label{display:flex;justify-content:space-between;align-items:center;margin:6px 0;font-size:15px}
+input{width:84px;padding:7px;font-size:16px;border-radius:8px;border:0;text-align:right}
+button{font-size:16px;font-weight:600;border:0;border-radius:10px;padding:11px 14px;background:var(--line);color:var(--asphalt)}
+#go{width:100%;margin-top:8px}
+#loc{padding:4px 10px;font-size:14px}
+#ph{font-size:15px}
+#tm{font-size:44px;font-weight:700;color:var(--line);font-variant-numeric:tabular-nums;line-height:1.1}
+#hud.flash #tm{color:var(--paper)}
+#ds{font-size:13px;opacity:.85}
+#al{margin-top:8px;background:var(--alert);border-radius:8px;padding:6px;font-weight:700}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="hud" class="panel" hidden>
+  <div id="ph"></div>
+  <div id="tm"></div>
+  <div id="ds"></div>
+  <div id="al" hidden>Hors zone ! Reviens vers le centre</div>
+</div>
+
+<div id="setup" class="panel">
+  <h1>Nouvelle partie</h1>
+  <p>Touche la carte pour placer le centre de la zone, ou <button id="loc">utilise ma position</button></p>
+  <label>Rayon de départ (m)<input id="r" type="number" value="3000"></label>
+  <label>Nombre de paliers<input id="n" type="number" value="4"></label>
+  <label>Minutes entre deux paliers<input id="d" type="number" value="10"></label>
+  <label>Début de la chasse dans (min)<input id="s" type="number" value="5"></label>
+  <button id="go">Créer et partager la partie</button>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const map = L.map('map', {zoomControl:false}).setView([46.6, 2.4], 5);
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
+
+let game = null, center = null, pick = null, pm = null, me = null, pos = null, zone, next, last = null;
+
+// --- Création de la partie ---
+function setPick(ll){ pick = ll; pm ? pm.setLatLng(ll) : (pm = L.marker(ll).addTo(map)); }
+map.on('click', e => { if(!game) setPick(e.latlng); });
+$('loc').onclick = () => navigator.geolocation.getCurrentPosition(
+  p => { const ll = L.latLng(p.coords.latitude, p.coords.longitude); setPick(ll); map.setView(ll, 13); },
+  () => alert('Position refusée : autorise la localisation dans ton navigateur.'),
+  {enableHighAccuracy:true});
+
+$('go').onclick = () => {
+  if(!pick) return alert('Place d\'abord le centre de la zone sur la carte.');
+  const g = {lat:+pick.lat.toFixed(5), lng:+pick.lng.toFixed(5), r:+$('r').value, n:+$('n').value, d:+$('d').value, s:Date.now() + $('s').value*60000};
+  const q = new URLSearchParams({c:g.lat+','+g.lng, r:g.r, n:g.n, d:g.d, s:g.s}).toString();
+  const url = location.href.split('#')[0] + '#' + q;
+  if(navigator.share) navigator.share({title:'Cache-cache', text:'Rejoins la partie !', url}).catch(()=>{});
+  else if(navigator.clipboard) navigator.clipboard.writeText(url).then(() => alert('Lien copié ! Envoie-le à tes potes.'));
+  location.hash = q;
+  start(g);
+};
+
+// --- Partie en cours ---
+const rad = (g, i) => Math.max(100, g.r * (1 - Math.max(i, 0) / g.n));
+const mmss = ms => { const s = Math.max(0, Math.ceil(ms/1000)); return String(s/60|0).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); };
+
+function start(g){
+  game = g; center = L.latLng(g.lat, g.lng);
+  $('setup').hidden = true; $('hud').hidden = false;
+  if(pm) map.removeLayer(pm);
+  zone = L.circle(center, {radius:g.r, color:'#e5383b', weight:3, fillOpacity:.08}).addTo(map);
+  next = L.circle(center, {radius:g.r, color:'#e5383b', weight:2, dashArray:'8', fill:false}).addTo(map);
+  map.fitBounds(zone.getBounds());
+  navigator.geolocation.watchPosition(p => {
+    pos = L.latLng(p.coords.latitude, p.coords.longitude);
+    me ? me.setLatLng(pos) : (me = L.circleMarker(pos, {radius:9, color:'#fff', weight:3, fillColor:'#0a6cff', fillOpacity:1}).addTo(map));
+  }, () => {}, {enableHighAccuracy:true});
+  if(navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => {});
+  tick(); setInterval(tick, 1000);
+}
+
+function tick(){
+  const g = game, now = Date.now(), t = now - g.s;
+  const i = t < 0 ? -1 : Math.min(g.n - 1, Math.floor(t / (g.d*6e4)));
+  const R = rad(g, i), more = i < g.n - 1;
+  zone.setRadius(R);
+  next.setRadius(rad(g, i + 1));
+  next.setStyle({opacity: more && i >= 0 ? 1 : 0});
+  $('ph').textContent = i < 0 ? 'Phase de cachette' : 'Palier ' + (i+1) + '/' + g.n + ' · zone de ' + Math.round(R) + ' m';
+  $('tm').textContent = i < 0 ? mmss(-t) : more ? mmss(g.s + (i+1)*g.d*6e4 - now) : 'Dernier palier';
+  const dist = pos ? ' · à ' + Math.round(center.distanceTo(pos)) + ' m du centre' : '';
+  $('ds').textContent = (i < 0 ? 'avant le début de la chasse' : more ? 'avant le prochain rétrécissement' : 'plus de rétrécissement') + dist;
+  const out = pos && center.distanceTo(pos) > R;
+  $('al').hidden = !out;
+  if(out && navigator.vibrate) navigator.vibrate(300);
+  if(last !== null && i > last && i > 0){
+    $('hud').classList.add('flash'); setTimeout(() => $('hud').classList.remove('flash'), 4000);
+    if(navigator.vibrate) navigator.vibrate([200,100,200]);
+  }
+  last = i;
+}
+
+// --- Ouverture via un lien de partie ---
+const p = new URLSearchParams(location.hash.slice(1));
+if(p.get('c')){
+  const [lat, lng] = p.get('c').split(',').map(Number);
+  start({lat, lng, r:+p.get('r'), n:+p.get('n'), d:+p.get('d'), s:+p.get('s')});
+}
+</script>
+</body>
+</html>
